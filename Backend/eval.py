@@ -16,29 +16,29 @@ dotenv.load_dotenv()
 
 
 
-class model : 
+# class model : 
 
-    def __init__(self,query) : 
-        self.query = query 
+#     def __init__(self,query) : 
+#         self.query = query 
 
     
-    def openai_model(self,model_name="llama-3.1-70b-versatile") : 
-        client = OpenAI(
-            model=model_name,
-            api_key=os.getenv("GROQ_API_KEY")
-        )
+#     def openai_model(self,model_name="llama-3.1-70b-versatile") : 
+#         client = OpenAI(
+#             model=model_name,
+#             api_key=os.getenv("GROQ_API_KEY")
+#         )
 
-        response = client.generate_content(self.query)
-        return response.text
+#         response = client.generate_content(self.query)
+#         return response.text
 
-    def gemini_model(self,model_name="gemini-2.0-flash-exp") : 
-        client = genai.GenerativeModel( 
-            model=model_name,
-            api_key=os.getenv("GEMINI_API_KEY")
-        )
+#     def gemini_model(self,model_name="gemini-2.0-flash-exp") : 
+#         client = genai.GenerativeModel( 
+#             model=model_name,
+#             api_key=os.getenv("GEMINI_API_KEY")
+#         )
 
-        response = client.generate_content(self.query)
-        return response.text
+#         response = client.generate_content(self.query)
+#         return response.text
 
 
 
@@ -50,16 +50,23 @@ class Evaluate :
         self.retrieval_context = None
     
 
-    def deep_eval(self,metric=None) : 
+    def deep_eval(self, metric=None):
         test_case = LLMTestCase(input=self.user_input, actual_output=self.llm_output)
         coherence_metric = metric(
-        name="Coherence",
-        criteria="Coherence - the collective quality of all sentences in the actual output",
-        evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
+            name="Coherence",
+            criteria="Coherence - the collective quality of all sentences in the actual output",
+            evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
         )
 
         coherence_metric.measure(test_case)
-        print(coherence_metric.score, coherence_metric.reason)
+        
+        # Formater le résultat pour l'affichage
+        result = f"""
+        **Score**: {coherence_metric.score}
+        
+        **Reason**: {coherence_metric.reason}
+        """
+        return result
 
     
     def deep_rag_eval(self,metric=None) :  
@@ -145,7 +152,6 @@ class FineTuningMetric(Evaluate) :
         )
         test_case = LLMTestCase(
         input=self.user_input,
-        # Replace this with the actual output from your LLM application
         actual_output = self.llm_output
         )
 
