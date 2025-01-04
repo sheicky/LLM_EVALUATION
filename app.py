@@ -1,5 +1,5 @@
 from Backend.just_prompt import SimplePrompt
-from Backend.eval import Evaluate
+from Backend.eval import Evaluate, RagMetrics, FineTuningMetric, Summarization
 import Frontend.main as main 
 from Backend.rag_prompt import RagModel, PerformRag
 from deepeval.metrics import GEval, FaithfulnessMetric, AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, ContextualRelevancyMetric, HallucinationMetric, ToxicityMetric, SummarizationMetric
@@ -21,8 +21,6 @@ embedding_model = HuggingFaceEmbeddings(
 )
 
 # Initialisation des session_state au début du fichier
-if 'evaluation_mode' not in st.session_state:
-    st.session_state.evaluation_mode = False
 if 'responses' not in st.session_state:
     st.session_state.responses = {'gemini': None, 'gpt': None}
 if 'input_data' not in st.session_state:
@@ -31,13 +29,51 @@ if 'metrics' not in st.session_state:
     st.session_state.metrics = {}
 if 'document_processed' not in st.session_state:
     st.session_state.document_processed = False
+if 'gemini_response' not in st.session_state:
+    st.session_state.gemini_response = None
+if 'gpt_response' not in st.session_state:
+    st.session_state.gpt_response = None
+if 'display_responses' not in st.session_state:
+    st.session_state.display_responses = False
 
 if __name__ == "__main__" :  
     app = main.WebApp() 
     chat_container = app.title()
     input_data = app.prompt_input(chat_container)
+    if input_data:
+        st.session_state.input_data = input_data  # Sauvegarder input_data
     gemini_response = None
     gpt_response = None
+    
+    # Sidebar toujours présent par défaut
+    with st.sidebar:
+        st.header("Evaluation Metrics")
+        metrics_options = {
+            "coherence": "Evaluate text coherence and flow",
+            "hallucination": "Check for factual accuracy",
+            "toxicity": "Detect harmful content",
+            "summarization": "Evaluate summary quality",
+            "faithfulness": "Check content reliability",
+            "answer_relevancy": "Evaluate response relevance",
+            "context_precision": "Measure contextual accuracy",
+            "context_recall": "Evaluate information coverage",
+            "context_relevancy": "Check context appropriateness"
+        }
+        
+        st.session_state.metrics = {
+            key: st.checkbox(key.capitalize(), help=value) 
+            for key, value in metrics_options.items()
+        }
+        
+        # Le bouton Start Evaluation n'apparaît que si des réponses sont disponibles
+        if 'gemini_response' in st.session_state and 'gpt_response' in st.session_state:
+            if any(st.session_state.metrics.values()):
+                button_start_evaluation = st.button("Start Evaluation", type="primary")
+            else:
+                st.warning("Please select at least one metric")
+                button_start_evaluation = False
+        else:
+            st.info("Generate model responses first to start evaluation")
     
     if input_data:
         # Initialiser le modèle et obtenir les réponses
@@ -77,15 +113,15 @@ if __name__ == "__main__" :
                 # 5. Utiliser les résultats pour la réponse
                 if top_matches['matches']:
                     rag_model = RagModel(top_matches, input_data["query"])
-                    gemini_response = rag_model.gemini_model_response(
+                    st.session_state.gemini_response = rag_model.gemini_model_response(
                         "gemini-2.0-flash-exp", 
                         gemini_api_key
                     )
-                    gpt_response = rag_model.gpt_model_response(
+                    st.session_state.gpt_response = rag_model.gpt_model_response(
                         "llama-3.1-70b-versatile", 
                         groq_api_key
                     )
-                    app.llm_model_output(gpt_response, gemini_response)
+                    app.llm_model_output(st.session_state.gpt_response, st.session_state.gemini_response)
                 else:
                     st.error("No matches found in the vector store")
                     
@@ -95,63 +131,125 @@ if __name__ == "__main__" :
         else : 
             st.info(f"Processing the query : {input_data['query']}")
             simple_prompt = SimplePrompt()
-            gemini_response = simple_prompt.gemini_model_response("gemini-2.0-flash-exp", gemini_api_key, input_data["query"])
-            gpt_response = simple_prompt.groq_model_response("llama-3.1-70b-versatile", groq_api_key, input_data["query"])
-            app.llm_model_output(gpt_response,gemini_response)
+            st.session_state.gemini_response = simple_prompt.gemini_model_response("gemini-2.0-flash-exp", gemini_api_key, input_data["query"])
+            st.session_state.gpt_response = simple_prompt.groq_model_response("llama-3.1-70b-versatile", groq_api_key, input_data["query"])
+            app.llm_model_output(st.session_state.gpt_response, st.session_state.gemini_response)
 
     
-    # Implement the evaluation metrics 
-    if gemini_response and gpt_response:
-        # Premier bouton pour activer l'évaluation
-        if st.button("Evaluate Models"):
-            st.session_state.evaluation_mode = False
+    # Afficher les réponses des modèles si elles existent dans session_state
+    if st.session_state.gemini_response and st.session_state.gpt_response:
+        app.llm_model_output(st.session_state.gpt_response, st.session_state.gemini_response)
         
-        # Afficher la sidebar si en mode évaluation
-        if st.session_state.evaluation_mode:
-            with st.sidebar:
-                st.header("Select Evaluation Metrics")
-                
-                # Métriques dans la sidebar avec des descriptions
-                metrics = {
-                    "coherence": st.checkbox("Coherence", help="Evaluate text coherence and flow"),
-                    "hallucination": st.checkbox("Hallucination", help="Check for factual accuracy"),
-                    "toxicity": st.checkbox("Toxicity", help="Detect harmful content"),
-                    "summarization": st.checkbox("Summarization", help="Evaluate summary quality"),
-                    "faithfulness": st.checkbox("Faithfulness", help="Check content reliability"),
-                    "answer_relevancy": st.checkbox("Answer Relevancy", help="Evaluate response relevance"),
-                    "context_precision": st.checkbox("Context Precision", help="Measure contextual accuracy"),
-                    "context_recall": st.checkbox("Context Recall", help="Evaluate information coverage"),
-                    "context_relevancy": st.checkbox("Context Relevancy", help="Check context appropriateness")
-                }
-                
-                # Bouton pour démarrer l'évaluation
-                if any(metrics.values()):
-                    button_start_evaluation = st.button("Start Evaluation", type="primary")
-                else:
-                    st.warning("Please select at least one metric")
-                    button_start_evaluation = False
+        # Implement the evaluation metrics 
+        if button_start_evaluation:
+            gemini_eval = Evaluate(st.session_state.input_data["query"], st.session_state.gemini_response)
+            gpt_eval = Evaluate(st.session_state.input_data["query"], st.session_state.gpt_response)
 
-            # Initialiser les évaluateurs si nécessaire
-            if any(metrics.values()):
-                gemini_eval = Evaluate(input_data["query"], gemini_response)
-                gpt_eval = Evaluate(input_data["query"], gpt_response)
-
-                # Lancer l'évaluation si le bouton est pressé
-                if button_start_evaluation:
+            # Créer une nouvelle section pour les résultats d'évaluation
+            st.markdown("---")  # Ligne de séparation
+            st.markdown("### 📊 Evaluation Results")
+            
+            # Évaluer chaque métrique sélectionnée
+            for metric_name, is_selected in st.session_state.metrics.items():
+                if is_selected:
                     col1, col2 = st.columns(2)
+                    with col1:
+                        with st.container(border=True):
+                            st.markdown(f"#### Gemini Model - {metric_name.capitalize()}")
+                            if metric_name in ["faithfulness", "answer_relevancy", "context_precision", 
+                                             "context_recall", "context_relevancy"]:
+                                # Métriques RAG
+                                rag_metrics = RagMetrics(st.session_state.input_data["query"], 
+                                                       st.session_state.gemini_response)
+                                if metric_name == "faithfulness":
+                                    result = rag_metrics.faithfullness()
+                                    st.write(f"Score: {result['score']}")
+                                    st.write(f"Reason: {result['reason']}")
+                                    st.write(f"Success: {result['success']}")
+                                elif metric_name == "answer_relevancy":
+                                    result = rag_metrics.answer_relevancy()
+                                    st.write(f"Score: {result['score']}")
+                                elif metric_name == "context_precision":
+                                    result = rag_metrics.contextual_precision()
+                                    st.write(f"Score: {result['score']}")
+                                elif metric_name == "context_recall":
+                                    result = rag_metrics.contextual_recall()
+                                    st.write(f"Score: {result['score']}")
+                                elif metric_name == "context_relevancy":
+                                    result = rag_metrics.contextual_relevancy()
+                                    st.write(f"Score: {result['score']}")
+                            elif metric_name in ["hallucination", "toxicity"]:
+                                # Métriques Fine-tuning
+                                ft_metrics = FineTuningMetric(st.session_state.input_data["query"], 
+                                                            st.session_state.gemini_response)
+                                if metric_name == "hallucination":
+                                    result = ft_metrics.hallucination()
+                                    if "error" in result:
+                                        st.error(result["error"])
+                                    else:
+                                        st.write(f"Score: {result['score']}")
+                                else:
+                                    result = ft_metrics.toxicity()
+                                    st.write(f"Score: {result['score']}")
+                            elif metric_name == "summarization":
+                                # Métrique de résumé
+                                sum_metrics = Summarization(st.session_state.input_data["query"], 
+                                                          st.session_state.gemini_response)
+                                result = sum_metrics.summarization()
+                                st.write(f"Score: {result['score']}")
+                            else:
+                                # Métrique de cohérence (GEval)
+                                result = gemini_eval.deep_eval()
+                                st.markdown(result)
                     
-                    # Évaluer chaque métrique sélectionnée
-                    if metrics["coherence"]:
-                        with col1:
-                            with st.container(border=True):
-                                st.markdown("#### Gemini Model Evaluation")
-                                st.caption("Coherence Metric")
-                                st.markdown(gemini_eval.deep_eval(metric=GEval))
-                        with col2:
-                            with st.container(border=True):
-                                st.markdown("#### LLaMA Model Evaluation")
-                                st.caption("Coherence Metric")
-                                st.markdown(gpt_eval.deep_eval(metric=GEval))
+                    with col2:
+                        with st.container(border=True):
+                            st.markdown(f"#### LLaMA Model - {metric_name.capitalize()}")
+                            if metric_name in ["faithfulness", "answer_relevancy", "context_precision", 
+                                             "context_recall", "context_relevancy"]:
+                                # Métriques RAG
+                                rag_metrics = RagMetrics(st.session_state.input_data["query"], 
+                                                       st.session_state.gpt_response)
+                                if metric_name == "faithfulness":
+                                    result = rag_metrics.faithfullness()
+                                    st.write(f"Score: {result['score']}")
+                                    st.write(f"Reason: {result['reason']}")
+                                    st.write(f"Success: {result['success']}")
+                                elif metric_name == "answer_relevancy":
+                                    result = rag_metrics.answer_relevancy()
+                                    st.write(f"Score: {result['score']}")
+                                elif metric_name == "context_precision":
+                                    result = rag_metrics.contextual_precision()
+                                    st.write(f"Score: {result['score']}")
+                                elif metric_name == "context_recall":
+                                    result = rag_metrics.contextual_recall()
+                                    st.write(f"Score: {result['score']}")
+                                elif metric_name == "context_relevancy":
+                                    result = rag_metrics.contextual_relevancy()
+                                    st.write(f"Score: {result['score']}")
+                            elif metric_name in ["hallucination", "toxicity"]:
+                                # Métriques Fine-tuning
+                                ft_metrics = FineTuningMetric(st.session_state.input_data["query"], 
+                                                            st.session_state.gpt_response)
+                                if metric_name == "hallucination":
+                                    result = ft_metrics.hallucination()
+                                    if "error" in result:
+                                        st.error(result["error"])
+                                    else:
+                                        st.write(f"Score: {result['score']}")
+                                else:
+                                    result = ft_metrics.toxicity()
+                                    st.write(f"Score: {result['score']}")
+                            elif metric_name == "summarization":
+                                # Métrique de résumé
+                                sum_metrics = Summarization(st.session_state.input_data["query"], 
+                                                          st.session_state.gpt_response)
+                                result = sum_metrics.summarization()
+                                st.write(f"Score: {result['score']}")
+                            else:
+                                # Métrique de cohérence (GEval)
+                                result = gpt_eval.deep_eval()
+                                st.markdown(result)
 
         
         

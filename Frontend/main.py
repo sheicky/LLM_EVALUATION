@@ -12,6 +12,7 @@ class WebApp :
     def title(self) :  
         #st.set_page_config(page_title="LLM Evaluation", page_icon="📊", layout="wide")
         st.title("LLM Evaluation 📊")
+        st.markdown("*made with ❤️ by sheick*")
         st.write("This is a web app for evaluating LLM models.")
         return st.container()  # Retourne un conteneur pour le chat input
 

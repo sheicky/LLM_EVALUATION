@@ -2,6 +2,7 @@ from google import generativeai as genai
 from openai import OpenAI
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams 
 from deepeval.metrics import GEval,  FaithfulnessMetric, AnswerRelevancyMetric, ContextualPrecisionMetric, ContextualRecallMetric, ContextualRelevancyMetric, HallucinationMetric, ToxicityMetric, SummarizationMetric
+#from langchain_openai import ChatOpenAI
 
 
 
@@ -16,30 +17,6 @@ dotenv.load_dotenv()
 
 
 
-# class model : 
-
-#     def __init__(self,query) : 
-#         self.query = query 
-
-    
-#     def openai_model(self,model_name="llama-3.1-70b-versatile") : 
-#         client = OpenAI(
-#             model=model_name,
-#             api_key=os.getenv("GROQ_API_KEY")
-#         )
-
-#         response = client.generate_content(self.query)
-#         return response.text
-
-#     def gemini_model(self,model_name="gemini-2.0-flash-exp") : 
-#         client = genai.GenerativeModel( 
-#             model=model_name,
-#             api_key=os.getenv("GEMINI_API_KEY")
-#         )
-
-#         response = client.generate_content(self.query)
-#         return response.text
-
 
 
 class Evaluate : 
@@ -52,21 +29,23 @@ class Evaluate :
 
     def deep_eval(self, metric=None):
         test_case = LLMTestCase(input=self.user_input, actual_output=self.llm_output)
-        coherence_metric = metric(
+        coherence_metric = GEval(
             name="Coherence",
             criteria="Coherence - the collective quality of all sentences in the actual output",
             evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
+            model="gpt-4"
         )
 
-        coherence_metric.measure(test_case)
-        
-        # Formater le résultat pour l'affichage
-        result = f"""
-        **Score**: {coherence_metric.score}
-        
-        **Reason**: {coherence_metric.reason}
-        """
-        return result
+        try:
+            coherence_metric.measure(test_case)
+            result = f"""
+            **Score**: {coherence_metric.score}
+            
+            **Reason**: {coherence_metric.reason}
+            """
+            return result
+        except Exception as e:
+            return f"Evaluation failed: {str(e)}"
 
     
     def deep_rag_eval(self,metric=None) :  
@@ -78,6 +57,7 @@ class Evaluate :
         metric = metric(threshold=
         0.5
         )
+
 
         metric.measure(test_case)
         print(metric.score)
@@ -122,20 +102,60 @@ class RagMetrics(Evaluate) :
 
 
     def faithfullness(self) : 
-        return Evaluate.deep_rag_eval(FaithfulnessMetric)
+        test_case=LLMTestCase(
+        input=self.user_input, 
+        actual_output=self.llm_output,
+        retrieval_context=self.retrieval_context
+        )
+        metric = FaithfulnessMetric(threshold=0.5,model="gpt-4-0613")
+        
+
+        metric.measure(test_case)
+        return {
+            "score": metric.score,
+            "reason": metric.reason,
+            "success": metric.is_successful()
+        }
 
     def answer_relevancy(self) : 
-        return Evaluate.deep_rag_eval(AnswerRelevancyMetric)
+        test_case=LLMTestCase(
+        input=self.user_input, 
+        actual_output=self.llm_output,
+        retrieval_context=self.retrieval_context
+        )
+        metric = AnswerRelevancyMetric(threshold=0.5,model="gpt-4-0613")
+        metric.measure(test_case)
+        return {"score": metric.score}
 
     def contextual_precision(self) : 
-        return Evaluate.deep_rag_eval(ContextualPrecisionMetric)
+        test_case=LLMTestCase(
+        input=self.user_input, 
+        actual_output=self.llm_output,
+        retrieval_context=self.retrieval_context
+        )
+        metric = ContextualPrecisionMetric(threshold=0.5,model="gpt-4")
+        metric.measure(test_case)
+        return {"score": metric.score}
 
     def contextual_recall(self) : 
-        return Evaluate.deep_rag_eval(ContextualRecallMetric)
-
+        test_case=LLMTestCase(
+        input=self.user_input, 
+        actual_output=self.llm_output,
+        retrieval_context=self.retrieval_context
+        )
+        metric = ContextualRecallMetric(threshold=0.5,model="gpt-4")
+        metric.measure(test_case)
+        return {"score": metric.score}
 
     def contextual_relevancy(self) : 
-        return Evaluate.deep_rag_eval(ContextualRelevancyMetric)
+        test_case=LLMTestCase(
+        input=self.user_input, 
+        actual_output=self.llm_output,
+        retrieval_context=self.retrieval_context
+        )
+        metric = ContextualRelevancyMetric(threshold=0.5,model="gpt-4")
+        metric.measure(test_case)
+        return {"score": metric.score}
 
 
 
@@ -144,29 +164,36 @@ class FineTuningMetric(Evaluate) :
 
 
     def hallucination(self,metric=HallucinationMetric) :  
-        return Evaluate.deep_fine_tunning_eval(metric)
+        if not self.retrieval_context:
+            return {
+                "error": "Please upload a document to use the hallucination metric. This metric requires context to evaluate against."
+            }
+            
+        test_case = LLMTestCase(
+            input=self.user_input,
+            actual_output=self.llm_output,
+            context=self.retrieval_context
+        )
+        metric = HallucinationMetric(threshold=0.5,model="gpt-4")
+        metric.measure(test_case)
+        return {"score": metric.score}
 
     def toxicity(self) : 
-        metric = ToxicityMetric(threshold=
-        0.5
-        )
+        metric = ToxicityMetric(threshold=0.5,model="gpt-4")
         test_case = LLMTestCase(
         input=self.user_input,
         actual_output = self.llm_output
         )
-
         metric.measure(test_case)
-        print(metric.score)
+        return {"score": metric.score}
 
 
 class Summarization(Evaluate) : 
 
     def summarization(self) : 
         test_case = LLMTestCase(input=self.user_input, actual_output=self.llm_output)
-        metric = SummarizationMetric(threshold=
-        0.5
-        )
-
+        metric = SummarizationMetric(threshold=0.5,model="gpt-4")
         metric.measure(test_case)
-        print(metric.score)
+        return {"score": metric.score}
+
 
