@@ -14,6 +14,9 @@ A powerful web application for evaluating and comparing different Large Language
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Documentation](#documentation) • [Contributing](#contributing)
 
 </div>
+---
+![image](https://github.com/user-attachments/assets/dfb692ce-0a9f-4e8f-bf09-3df75b5b3e2f)
+
 
 ## ✨ Why LLM Evaluation Tool?
 
